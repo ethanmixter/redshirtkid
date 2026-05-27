@@ -382,6 +382,12 @@ let decorationObjects = []; // Clouds, bushes, mountains
 let bridgeCollapsing = false;
 let bridgeCollapseTimer = 0;
 
+function getRequestedStartWorld() {
+    const params = new URLSearchParams(window.location.search);
+    const requestedWorld = params.get('level') || params.get('world');
+    return ['1-1', '1-2'].includes(requestedWorld) ? requestedWorld : '1-1';
+}
+
 // --- GRAPHICS SPRITES GENERATORS (Canvas Procedural Drawing) ---
 function drawBrick(ctx, x, y, w, h) {
     ctx.fillStyle = '#C84C0C';
@@ -2340,7 +2346,7 @@ function startGame() {
     score = 0;
     coins = 0;
     lives = 3;
-    currentWorld = new URLSearchParams(window.location.search).get('level') === '1-2' ? '1-2' : '1-1';
+    currentWorld = getRequestedStartWorld();
     updateHUD();
     showLevelIntro();
 }
