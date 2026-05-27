@@ -2071,7 +2071,8 @@ function drawGame() {
 
     // Draw Mario with riding offset considerations
     if (mario.ridingYoshi) {
-        drawYoshiEntity(ctx, mario.x - 4, mario.y + 10, 28, 28, mario.facing, globalAnimTick, true);
+        const yoshiDrawY = mario.y + mario.height - 28;
+        drawYoshiEntity(ctx, mario.x - 4, yoshiDrawY, 28, 28, mario.facing, globalAnimTick, true);
         ctx.save();
         // Shift Mario drawing up to fit properly onto saddle
         drawMario(ctx, mario.x, mario.y - 10);
