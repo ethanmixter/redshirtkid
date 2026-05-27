@@ -463,7 +463,7 @@ function drawMario(ctx, x, y, scaleY = 1) {
     const facingRight = (mario.facing === 'right');
     
     ctx.save();
-    ctx.translate(x + mario.width/2, y + mario.height/2);
+    ctx.translate(x + mario.width/2, y + mario.height/2 + 4);
     if (!facingRight) {
         ctx.scale(-1, 1);
     }
