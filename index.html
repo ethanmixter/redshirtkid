@@ -44,7 +44,7 @@
         <div class="flex items-center space-x-6">
             <div>KID<br><span id="score-val" class="text-yellow-400">000000</span></div>
             <div>COINS<br><span id="coins-val" class="text-yellow-300">x00</span></div>
-            <div>WORLD<br><span class="text-blue-400">1-1</span></div>
+            <div>WORLD<br><span id="world-val" class="text-blue-400">1-1</span></div>
             <div>LIVES<br><span id="lives-val" class="text-red-400">x3</span></div>
         </div>
         <div class="flex items-center space-x-3 mt-2 sm:mt-0">
@@ -91,7 +91,7 @@
 
         <!-- Overlay: Level Intro Card -->
         <div id="screen-intro" class="absolute inset-0 bg-black flex flex-col items-center justify-center z-40 hidden">
-            <p class="text-lg sm:text-2xl tracking-widest mb-6">WORLD  1-1</p>
+            <p class="text-lg sm:text-2xl tracking-widest mb-6">WORLD  <span id="intro-world">1-1</span></p>
             <div class="flex items-center space-x-4 mb-4">
                 <div id="mario-life-icon" class="w-12 h-12"></div>
                 <span class="text-xl sm:text-2xl text-gray-300">×</span>
@@ -316,6 +316,7 @@ const FRICTION = 0.85;
 let score = 0;
 let coins = 0;
 let lives = 3;
+let currentWorld = '1-1';
 let gameState = 'MENU'; // MENU, INTRO, PLAYING, GAMEOVER, VICTORY
 let introTimer = 0;
 
@@ -1119,10 +1120,204 @@ function drawBush(ctx, x, y, width) {
     ctx.fill();
     ctx.fillRect(x, y + 8, width, 16);
 }
+
+function drawDungeonTorch(ctx, x, y, tick) {
+    ctx.fillStyle = '#4A2608';
+    ctx.fillRect(x + 5, y + 10, 4, 18);
+    ctx.fillStyle = '#1a0f08';
+    ctx.fillRect(x + 2, y + 27, 10, 3);
+
+    const flicker = Math.sin(tick * 0.2 + x) * 2;
+    ctx.fillStyle = '#FFB000';
+    ctx.beginPath();
+    ctx.moveTo(x + 7, y + flicker);
+    ctx.lineTo(x + 14, y + 14);
+    ctx.lineTo(x, y + 14);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#FF3B1F';
+    ctx.beginPath();
+    ctx.moveTo(x + 7, y + 5 + flicker);
+    ctx.lineTo(x + 11, y + 15);
+    ctx.lineTo(x + 3, y + 15);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawStalactite(ctx, x, y, height) {
+    ctx.fillStyle = '#2d3140';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 18, y);
+    ctx.lineTo(x + 9, y + height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#0b1020';
+    ctx.stroke();
+}
 </script>
 
 <script>
 // --- LEVEL DESIGN & GENERATION ---
+function initDungeonLevel() {
+    for (let x = 80; x < levelWidth; x += 280) {
+        decorationObjects.push({ type: 'torch', x: x, y: 58 });
+        decorationObjects.push({ type: 'torch', x: x + 150, y: 132 });
+        decorationObjects.push({ type: 'stalactite', x: x + 70, y: 32, height: 28 + ((x / 80) % 20) });
+    }
+
+    const segmentWidth = 32;
+    const totalSegments = Math.ceil(levelWidth / segmentWidth);
+    
+    for (let i = 0; i < totalSegments; i++) {
+        const x = i * segmentWidth;
+
+        if ((i >= 31 && i <= 33) || (i >= 67 && i <= 69) || (i >= 104 && i <= 106)) {
+            continue;
+        }
+
+        blocks.push({
+            type: 'dungeon_floor',
+            x: x,
+            y: 208,
+            width: segmentWidth,
+            height: 32,
+            solid: true
+        });
+
+        blocks.push({
+            type: 'dungeon_ceiling',
+            x: x,
+            y: 0,
+            width: segmentWidth,
+            height: 32,
+            solid: true
+        });
+    }
+
+    const platformRuns = [
+        { x: 260, y: 150, count: 5 },
+        { x: 560, y: 112, count: 4 },
+        { x: 840, y: 152, count: 5 },
+        { x: 1160, y: 96, count: 6 },
+        { x: 1540, y: 144, count: 5 },
+        { x: 1900, y: 112, count: 6 },
+        { x: 2300, y: 150, count: 4 },
+        { x: 2620, y: 96, count: 5 },
+        { x: 3000, y: 144, count: 5 },
+        { x: 3360, y: 112, count: 6 }
+    ];
+
+    platformRuns.forEach(run => {
+        for (let i = 0; i < run.count; i++) {
+            blocks.push({
+                type: 'dungeon_floor',
+                x: run.x + i * 32,
+                y: run.y,
+                width: 32,
+                height: 16,
+                solid: true
+            });
+        }
+    });
+
+    const dungeonBlocks = [
+        { x: 420, y: 72, type: 'question', contains: 'coin' },
+        { x: 452, y: 72, type: 'brick' },
+        { x: 484, y: 72, type: 'question', contains: 'mushroom' },
+        { x: 980, y: 96, type: 'brick' },
+        { x: 1012, y: 96, type: 'question', contains: 'coin' },
+        { x: 1300, y: 56, type: 'question', contains: 'egg' },
+        { x: 1760, y: 72, type: 'brick' },
+        { x: 1792, y: 72, type: 'brick' },
+        { x: 1824, y: 72, type: 'question', contains: 'coin' },
+        { x: 2440, y: 96, type: 'question', contains: 'mushroom' },
+        { x: 2780, y: 56, type: 'brick' },
+        { x: 2812, y: 56, type: 'question', contains: 'coin' }
+    ];
+
+    dungeonBlocks.forEach(b => {
+        blocks.push({
+            type: b.type,
+            x: b.x,
+            y: b.y,
+            width: 32,
+            height: 32,
+            solid: true,
+            contains: b.contains || null,
+            isHit: false,
+            hitTimer: 0
+        });
+    });
+
+    const pipeLocations = [
+        { x: 700, height: 42 },
+        { x: 1450, height: 58 },
+        { x: 2180, height: 42 },
+        { x: 3220, height: 58 }
+    ];
+
+    pipeLocations.forEach(p => {
+        blocks.push({
+            type: 'pipe',
+            x: p.x,
+            y: 208 - p.height,
+            width: 36,
+            height: p.height,
+            solid: true
+        });
+    });
+
+    const stairsX = 3660;
+    for (let r = 0; r < 5; r++) {
+        for (let c = r; c < 5; c++) {
+            blocks.push({
+                type: 'dungeon_floor',
+                x: stairsX + c * 24,
+                y: 208 - (5 - r) * 24,
+                width: 24,
+                height: 24,
+                solid: true
+            });
+        }
+    }
+
+    blocks.push({
+        type: 'flagpole',
+        x: 3980,
+        y: 40,
+        width: 8,
+        height: 168,
+        solid: false
+    });
+    
+    blocks.push({
+        type: 'castle',
+        x: 4180,
+        y: 112,
+        width: 96,
+        height: 96,
+        solid: false
+    });
+
+    const goombaSpawns = [420, 760, 1120, 1510, 1880, 2320, 2680, 3060, 3480];
+    goombaSpawns.forEach(gx => {
+        enemies.push({
+            x: gx,
+            y: 181,
+            vx: -0.75,
+            vy: 0,
+            width: 27,
+            height: 27,
+            type: 'goomba',
+            state: 'walk',
+            isDead: false,
+            deadTimer: 0
+        });
+    });
+}
+
 function initLevel() {
     blocks = [];
     enemies = [];
@@ -1136,6 +1331,11 @@ function initLevel() {
     
     mario.reset();
     cameraX = 0;
+
+    if (currentWorld === '1-2') {
+        initDungeonLevel();
+        return;
+    }
 
     for (let x = 100; x < levelWidth; x += 350) {
         decorationObjects.push({ type: 'cloud', x: x, y: 40 + Math.random() * 40, scale: 1.2 });
@@ -1415,7 +1615,11 @@ function updatePhysics() {
         mario.x += 1;
         mario.animFrame += 0.15;
         if (mario.x >= 4140) {
-            showVictoryScreen();
+            if (currentWorld === '1-1') {
+                startNextLevel();
+            } else {
+                showVictoryScreen();
+            }
         }
         return;
     }
@@ -1949,14 +2153,27 @@ function handleLifeLoss() {
 let globalAnimTick = 0;
 
 function drawGame() {
-    ctx.fillStyle = '#5c94fc';
+    ctx.fillStyle = currentWorld === '1-2' ? '#141827' : '#5c94fc';
     ctx.fillRect(0, 0, VIRT_WIDTH, VIRT_HEIGHT);
+
+    if (currentWorld === '1-2') {
+        ctx.fillStyle = '#1f2638';
+        for (let y = 32; y < 208; y += 32) {
+            for (let x = -((Math.floor(cameraX * 0.15) % 48)); x < VIRT_WIDTH; x += 48) {
+                ctx.fillRect(x, y, 46, 30);
+            }
+        }
+        ctx.fillStyle = '#0b1020';
+        ctx.fillRect(0, 0, VIRT_WIDTH, 32);
+    }
 
     ctx.save();
     ctx.translate(-Math.floor(cameraX * 0.3), 0);
     decorationObjects.forEach(d => {
         if (d.type === 'cloud') {
             drawCloud(ctx, d.x, d.y, d.scale);
+        } else if (d.type === 'stalactite') {
+            drawStalactite(ctx, d.x, d.y, d.height);
         }
     });
     ctx.restore();
@@ -1966,6 +2183,8 @@ function drawGame() {
     decorationObjects.forEach(d => {
         if (d.type === 'bush') {
             drawBush(ctx, d.x, d.y, d.width);
+        } else if (d.type === 'torch') {
+            drawDungeonTorch(ctx, d.x, d.y, globalAnimTick);
         }
     });
     ctx.restore();
@@ -1984,6 +2203,14 @@ function drawGame() {
 
         if (block.type === 'ground' || block.type === 'brick') {
             drawBrick(ctx, block.x, renderY, block.width, block.height);
+        } else if (block.type === 'dungeon_floor' || block.type === 'dungeon_ceiling') {
+            ctx.fillStyle = block.type === 'dungeon_ceiling' ? '#20283a' : '#30384d';
+            ctx.fillRect(block.x, renderY, block.width, block.height);
+            ctx.fillStyle = '#4b5874';
+            ctx.fillRect(block.x, renderY, block.width, 2);
+            ctx.fillRect(block.x, renderY, 2, block.height);
+            ctx.fillStyle = '#0b1020';
+            ctx.strokeRect(block.x, renderY, block.width, block.height);
         } else if (block.type === 'bridge') {
             // Draw custom bridge planks with rope links
             ctx.fillStyle = '#A85400';
@@ -2089,11 +2316,13 @@ function drawGame() {
 const hudScore = document.getElementById('score-val');
 const hudCoins = document.getElementById('coins-val');
 const hudLives = document.getElementById('lives-val');
+const hudWorld = document.getElementById('world-val');
 
 function updateHUD() {
     hudScore.textContent = String(score).padStart(6, '0');
     hudCoins.textContent = 'x' + String(coins).padStart(2, '0');
     hudLives.textContent = 'x' + String(lives);
+    hudWorld.textContent = currentWorld;
 }
 </script>
 
@@ -2104,12 +2333,20 @@ const screenIntro = document.getElementById('screen-intro');
 const screenGameOver = document.getElementById('screen-gameover');
 const screenVictory = document.getElementById('screen-victory');
 const introLives = document.getElementById('intro-lives');
+const introWorld = document.getElementById('intro-world');
 const finalScore = document.getElementById('final-score');
 
 function startGame() {
     score = 0;
     coins = 0;
     lives = 3;
+    currentWorld = new URLSearchParams(window.location.search).get('level') === '1-2' ? '1-2' : '1-1';
+    updateHUD();
+    showLevelIntro();
+}
+
+function startNextLevel() {
+    currentWorld = '1-2';
     updateHUD();
     showLevelIntro();
 }
@@ -2121,6 +2358,7 @@ function showLevelIntro() {
     screenVictory.classList.add('hidden');
     
     introLives.textContent = lives;
+    introWorld.textContent = currentWorld;
     screenIntro.classList.remove('hidden');
     
     initLevel();
