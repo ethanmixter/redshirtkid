@@ -1,0 +1,2268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Super Mario Bros - Retro Web Edition</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js for retro synthesizers -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Google Fonts for retro style -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', monospace;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            background-color: #111;
+        }
+        /* CRT scanline simulation effect */
+        .crt::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            aspect-ratio: 16/9;
+            z-index: 20;
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+        .pixelated {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen text-white overflow-hidden p-2 sm:p-4">
+
+<div class="relative w-full max-w-4xl bg-black rounded-2xl overflow-hidden shadow-2xl border-4 border-gray-800 flex flex-col">
+    <!-- Top Bar with Scores & Controls -->
+    <div class="bg-gray-900 px-4 py-3 flex flex-wrap justify-between items-center text-xs border-b border-gray-800 z-30">
+        <div class="flex items-center space-x-6">
+            <div>MARIO<br><span id="score-val" class="text-yellow-400">000000</span></div>
+            <div>COINS<br><span id="coins-val" class="text-yellow-300">x00</span></div>
+            <div>WORLD<br><span class="text-blue-400">1-1</span></div>
+            <div>LIVES<br><span id="lives-val" class="text-red-400">x3</span></div>
+        </div>
+        <div class="flex items-center space-x-3 mt-2 sm:mt-0">
+            <button id="btn-audio" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 active:scale-95 transition-all rounded text-[10px] uppercase font-bold flex items-center gap-1">
+                🔊 Audio: On
+            </button>
+            <button id="btn-crt" class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 active:scale-95 transition-all rounded text-[10px] uppercase font-bold">
+                CRT: On
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Game Container -->
+    <div id="game-window" class="relative w-full aspect-[16/9] bg-[#5c94fc] crt overflow-hidden">
+        <!-- Canvas Layer -->
+        <canvas id="game-canvas" class="w-full h-full block pixelated"></canvas>
+
+        <!-- Overlay: Menu Screen -->
+        <div id="screen-menu" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-4 z-40 transition-opacity duration-300">
+            <div class="text-center animate-bounce mb-2">
+                <span class="text-red-600 text-3xl sm:text-5xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(255,255,255,0.8)]">SUPER</span>
+                <span class="text-yellow-500 text-3xl sm:text-5xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(255,255,255,0.8)]">MARIO</span>
+                <br>
+                <span class="text-green-600 text-2xl sm:text-4xl font-extrabold tracking-wider drop-shadow-[0_3px_0_rgba(255,255,255,0.8)]">BROS.</span>
+            </div>
+            <p class="text-[10px] sm:text-sm text-gray-400 tracking-widest mb-8">WEB RETRO REMAKE</p>
+            
+            <button id="btn-play" class="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-black text-sm sm:text-lg rounded-xl shadow-lg transform hover:scale-105 active:scale-95 border-b-4 border-yellow-700 transition-all mb-6">
+                START GAME
+            </button>
+
+            <!-- Instructions -->
+            <div class="text-[8px] sm:text-xs text-gray-300 max-w-md text-center bg-gray-900/80 p-4 rounded-xl border border-gray-700 leading-relaxed">
+                <p class="text-yellow-400 font-bold mb-2">CONTROLS:</p>
+                <div class="grid grid-cols-2 gap-2 text-left">
+                    <div>← / A : Move Left</div>
+                    <div>→ / D : Move Right</div>
+                    <div>↑ / W / SPACE : Jump / Yoshi Flutter</div>
+                    <div>SHIFT : Run Speed</div>
+                </div>
+                <p class="mt-3 text-red-400">Mobile support: On-screen virtual buttons below!</p>
+            </div>
+        </div>
+
+        <!-- Overlay: Level Intro Card -->
+        <div id="screen-intro" class="absolute inset-0 bg-black flex flex-col items-center justify-center z-40 hidden">
+            <p class="text-lg sm:text-2xl tracking-widest mb-6">WORLD  1-1</p>
+            <div class="flex items-center space-x-4 mb-4">
+                <div id="mario-life-icon" class="w-12 h-12"></div>
+                <span class="text-xl sm:text-2xl text-gray-300">×</span>
+                <span id="intro-lives" class="text-xl sm:text-2xl font-bold">3</span>
+            </div>
+        </div>
+
+        <!-- Overlay: Game Over Screen -->
+        <div id="screen-gameover" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center z-40 hidden">
+            <h1 class="text-red-600 text-3xl sm:text-5xl font-black mb-6 tracking-widest animate-pulse">GAME OVER</h1>
+            <button id="btn-restart" class="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-bold text-xs sm:text-sm rounded-lg border-b-4 border-red-800 active:scale-95 transition-all">
+                TRY AGAIN
+            </button>
+        </div>
+
+        <!-- Overlay: Victory Screen -->
+        <div id="screen-victory" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center p-4 z-40 hidden">
+            <h1 class="text-yellow-400 text-2xl sm:text-4xl font-black mb-4 tracking-widest text-center animate-bounce">CONGRATULATIONS!</h1>
+            <p class="text-[10px] sm:text-xs text-green-400 text-center leading-relaxed max-w-md mb-8">
+                THANK YOU MARIO!<br><br>BUT OUR PRINCESS IS IN...<br>WAIT, YOU COMPLETED THE LEVEL!
+            </p>
+            <div class="bg-gray-900/90 border border-yellow-500 rounded-lg p-4 text-[10px] sm:text-xs text-center space-y-2 mb-6">
+                <p class="text-white">YOUR FINAL SCORE:</p>
+                <p id="final-score" class="text-2xl text-yellow-300 font-bold">000000</p>
+            </div>
+            <button id="btn-win-restart" class="px-6 py-3 bg-green-600 hover:bg-green-500 text-white font-bold text-xs sm:text-sm rounded-lg border-b-4 border-green-800 active:scale-95 transition-all">
+                PLAY AGAIN
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile Controller Overlay (Hidden on desktop, fully dynamic on mobile) -->
+    <div id="mobile-controls" class="bg-gray-950 px-4 py-4 flex justify-between items-center border-t border-gray-800 select-none md:hidden">
+        <!-- D-Pad -->
+        <div class="relative w-36 h-36 flex items-center justify-center">
+            <div class="absolute inset-0 bg-gray-900 rounded-full border border-gray-800"></div>
+            <!-- Left Button -->
+            <button id="ctrl-left" class="absolute left-1 w-12 h-12 bg-gray-700 active:bg-red-600 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                <span class="text-white text-lg">◀</span>
+            </button>
+            <!-- Right Button -->
+            <button id="ctrl-right" class="absolute right-1 w-12 h-12 bg-gray-700 active:bg-red-600 rounded-lg flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                <span class="text-white text-lg">▶</span>
+            </button>
+            <!-- Center hub -->
+            <div class="w-10 h-10 bg-gray-850 rounded-full z-10"></div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex space-x-4">
+            <!-- Run (B) Button -->
+            <div class="flex flex-col items-center">
+                <button id="ctrl-run" class="w-14 h-14 bg-red-600 active:bg-red-500 border-b-4 border-red-800 rounded-full flex items-center justify-center shadow-lg active:scale-90 transform transition-all">
+                    <span class="text-white font-black text-sm">B</span>
+                </button>
+                <span class="text-[8px] text-gray-500 mt-1">RUN</span>
+            </div>
+            <!-- Jump (A) Button -->
+            <div class="flex flex-col items-center">
+                <button id="ctrl-jump" class="w-16 h-16 bg-yellow-500 active:bg-yellow-400 border-b-4 border-yellow-700 rounded-full flex items-center justify-center shadow-lg active:scale-90 transform transition-all">
+                    <span class="text-black font-black text-lg">A</span>
+                </button>
+                <span class="text-[8px] text-gray-500 mt-1">JUMP</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- AUDIO SYSTEM (Tone.js Synthesizers) ---
+let audioEnabled = true;
+
+// Custom Synths initialized safely to protect against blocked assets/extensions
+let synth, coinSynth, bassSynth;
+
+try {
+    if (typeof Tone !== 'undefined') {
+        synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "square" },
+            envelope: { attack: 0.01, decay: 0.1, sustain: 0.1, release: 0.1 }
+        }).toDestination();
+
+        coinSynth = new Tone.Synth({
+            oscillator: { type: "sine" },
+            envelope: { attack: 0.01, decay: 0.15, sustain: 0.1, release: 0.1 }
+        }).toDestination();
+
+        bassSynth = new Tone.Synth({
+            oscillator: { type: "triangle" },
+            envelope: { attack: 0.02, decay: 0.2, sustain: 0.0, release: 0.1 }
+        }).toDestination();
+    }
+} catch (e) {
+    console.warn("Tone.js synthesizers failed to initialize:", e);
+}
+
+// Play game sound effects
+function playSound(type) {
+    if (!audioEnabled || typeof Tone === 'undefined') return;
+    
+    try {
+        // Ensure Tone.js context is running
+        if (Tone.context && Tone.context.state !== 'running') {
+            Tone.start();
+        }
+
+        if (!synth || !coinSynth || !bassSynth) return;
+
+        switch (type) {
+            case 'jump':
+                synth.triggerAttackRelease("C4", "16n");
+                synth.triggerAttackRelease("E4", "16n", "+0.05");
+                break;
+            case 'coin':
+                coinSynth.triggerAttackRelease("B5", "16n");
+                coinSynth.triggerAttackRelease("E6", "8n", "+0.08");
+                break;
+            case 'stomp':
+                bassSynth.triggerAttackRelease("G2", "16n");
+                bassSynth.triggerAttackRelease("C2", "8n", "+0.05");
+                break;
+            case 'powerup_spawn':
+                synth.triggerAttackRelease("G4", "16n");
+                synth.triggerAttackRelease("B4", "16n", "+0.05");
+                synth.triggerAttackRelease("G5", "16n", "+0.1");
+                break;
+            case 'powerup':
+                synth.triggerAttackRelease("G4", "16n");
+                synth.triggerAttackRelease("C5", "16n", "+0.05");
+                synth.triggerAttackRelease("E5", "16n", "+0.1");
+                synth.triggerAttackRelease("G5", "16n", "+0.15");
+                synth.triggerAttackRelease("C6", "16n", "+0.2");
+                synth.triggerAttackRelease("E6", "16n", "+0.25");
+                break;
+            case 'shrink':
+                synth.triggerAttackRelease("C5", "16n");
+                synth.triggerAttackRelease("G4", "16n", "+0.08");
+                synth.triggerAttackRelease("E4", "16n", "+0.16");
+                synth.triggerAttackRelease("C4", "8n", "+0.24");
+                break;
+            case 'flutter':
+                synth.triggerAttackRelease("E5", "32n");
+                synth.triggerAttackRelease("G5", "32n", "+0.03");
+                break;
+            case 'die':
+                const now = Tone.now();
+                synth.triggerAttackRelease("B4", "16n", now);
+                synth.triggerAttackRelease("F4", "16n", now + 0.1);
+                synth.triggerAttackRelease("F4", "16n", now + 0.2);
+                synth.triggerAttackRelease("F4", "16n", now + 0.3);
+                synth.triggerAttackRelease("E4", "16n", now + 0.4);
+                synth.triggerAttackRelease("D4", "16n", now + 0.5);
+                synth.triggerAttackRelease("C4", "8n", now + 0.6);
+                break;
+            case 'brick_break':
+                bassSynth.triggerAttackRelease("A2", "16n");
+                bassSynth.triggerAttackRelease("F2", "16n", "+0.05");
+                break;
+            case 'victory':
+                const t = Tone.now();
+                synth.triggerAttackRelease("G4", "8n", t);
+                synth.triggerAttackRelease("C5", "8n", t + 0.15);
+                synth.triggerAttackRelease("E5", "8n", t + 0.3);
+                synth.triggerAttackRelease("G5", "8n", t + 0.45);
+                synth.triggerAttackRelease("C6", "8n", t + 0.6);
+                synth.triggerAttackRelease("E6", "8n", t + 0.75);
+                synth.triggerAttackRelease("G6", "4n", t + 0.9);
+                synth.triggerAttackRelease("E6", "4n", t + 1.2);
+                break;
+        }
+    } catch (e) {
+        console.warn("Sound failed to play:", e);
+    }
+}
+
+// Audio Button Handler
+const btnAudio = document.getElementById('btn-audio');
+btnAudio.addEventListener('click', () => {
+    audioEnabled = !audioEnabled;
+    if (audioEnabled) {
+        if (typeof Tone !== 'undefined') Tone.start();
+        btnAudio.textContent = '🔊 Audio: On';
+        btnAudio.classList.remove('bg-gray-600');
+        btnAudio.classList.add('bg-red-600');
+    } else {
+        btnAudio.textContent = '🔇 Audio: Off';
+        btnAudio.classList.remove('bg-red-600');
+        btnAudio.classList.add('bg-gray-600');
+    }
+});
+
+// CRT effect button toggle
+const btnCrt = document.getElementById('btn-crt');
+const gameWindow = document.getElementById('game-window');
+btnCrt.addEventListener('click', () => {
+    gameWindow.classList.toggle('crt');
+    btnCrt.textContent = gameWindow.classList.contains('crt') ? 'CRT: On' : 'CRT: Off';
+});
+</script>
+
+<script>
+// --- GAME CONFIGURATION & ENGINE ---
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+
+// Virtual Resolution (Maintains retro aspect ratio aspect but draws crisply)
+const VIRT_WIDTH = 512;
+const VIRT_HEIGHT = 240;
+
+canvas.width = VIRT_WIDTH;
+canvas.height = VIRT_HEIGHT;
+
+// Physics Configs
+const GRAVITY = 0.35;
+const WALK_SPEED = 1.6;
+const RUN_SPEED = 2.8;
+const JUMP_FORCE = -8.0; // Increased to allow clearing 80px tall pipes easily
+const MIN_JUMP_FORCE = -2.5; // Active limit for variable jumping/short hops
+const FRICTION = 0.85;
+
+// Game State Values
+let score = 0;
+let coins = 0;
+let lives = 3;
+let gameState = 'MENU'; // MENU, INTRO, PLAYING, GAMEOVER, VICTORY
+let introTimer = 0;
+
+// Camera System
+let cameraX = 0;
+const levelWidth = 4600;
+
+// Input State
+const keys = {
+    left: false,
+    right: false,
+    up: false,
+    run: false
+};
+
+// Player (Mario) Object (Hitbox scaled up 1.5x for larger display)
+const mario = {
+    x: 60,
+    y: 150,
+    vx: 0,
+    vy: 0,
+    width: 21,    // Scaled up 1.5x (originally 14)
+    height: 24,   // Scaled up 1.5x (originally 16)
+    isSuper: false, // true = big Mario
+    ridingYoshi: false, // Yoshi ride mechanics
+    flutterTimer: 0, // Yoshi flutter hovering counter
+    grounded: false,
+    facing: 'right',
+    animFrame: 0,
+    animTimer: 0,
+    state: 'idle', // idle, walking, running, jumping, dying, flagSlide, castleWalk
+    invincibleTimer: 0,
+    dyingTimer: 0,
+    scoreDisplayTimer: 0,
+    
+    reset() {
+        this.x = 60;
+        this.y = 100;
+        this.vx = 0;
+        this.vy = 0;
+        this.isSuper = false; // Reset back to small Mario upon restart
+        this.ridingYoshi = false; // Reset Yoshi
+        this.flutterTimer = 0;
+        this.width = 21;      // Scaled up 1.5x
+        this.height = 24;     // Scaled up 1.5x
+        this.grounded = false;
+        this.facing = 'right';
+        this.state = 'idle';
+        this.invincibleTimer = 0;
+        this.dyingTimer = 0;
+    }
+};
+
+// Lists of active elements
+let blocks = [];
+let particles = [];
+let enemies = [];
+let powerups = [];
+let projectiles = []; // Fireballs / flying hazards
+let decorationObjects = []; // Clouds, bushes, mountains
+
+// Bridge collapse sequence states
+let bridgeCollapsing = false;
+let bridgeCollapseTimer = 0;
+
+// --- GRAPHICS SPRITES GENERATORS (Canvas Procedural Drawing) ---
+function drawBrick(ctx, x, y, w, h) {
+    ctx.fillStyle = '#C84C0C';
+    ctx.fillRect(x, y, w, h);
+    
+    ctx.fillStyle = '#FC9C5C';
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x + w - 2, y, 2, h);
+    
+    ctx.fillRect(x, y + h/2, w, 2);
+    ctx.fillStyle = '#FC9C5C';
+    ctx.fillRect(x, y + h/2 + 2, w, 1);
+
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x + w/4, y, 2, h/2);
+    ctx.fillRect(x + 3*w/4, y, 2, h/2);
+    ctx.fillRect(x + w/2, y + h/2, 2, h/2);
+}
+
+function drawQuestionBlock(ctx, x, y, w, h, animTick) {
+    const flash = Math.floor(animTick / 10) % 3;
+    const baseColors = ['#FC9C5C', '#FCD8A0', '#A07000'];
+    const highlightColors = ['#FFE8C0', '#FFFFFF', '#FC9C5C'];
+    
+    ctx.fillStyle = baseColors[flash];
+    ctx.fillRect(x, y, w, h);
+    
+    ctx.fillStyle = highlightColors[flash];
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x + w - 2, y, 2, h);
+    
+    ctx.fillRect(x + 3, y + 3, 2, 2);
+    ctx.fillRect(x + w - 5, y + 3, 2, 2);
+    ctx.fillRect(x + 3, y + h - 5, 2, 2);
+    ctx.fillRect(x + w - 5, y + h - 5, 2, 2);
+    
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 12px "Press Start 2P"';
+    ctx.fillText('?', x + 9, y + 21);
+}
+
+function drawUsedBlock(ctx, x, y, w, h) {
+    ctx.fillStyle = '#7C7C7C';
+    ctx.fillRect(x, y, w, h);
+    
+    ctx.fillStyle = '#9C9C9C';
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    
+    ctx.fillStyle = '#444444';
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x + w - 2, y, 2, h);
+    
+    ctx.fillRect(x + 3, y + 3, 2, 2);
+    ctx.fillRect(x + w - 5, y + 3, 2, 2);
+    ctx.fillRect(x + 3, y + h - 5, 2, 2);
+    ctx.fillRect(x + w - 5, y + h - 5, 2, 2);
+}
+
+function drawSolidBrownBlock(ctx, x, y, w, h) {
+    ctx.fillStyle = '#C84C0C';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#000000';
+    ctx.strokeRect(x, y, w, h);
+}
+</script>
+
+<script>
+// Programmatic Custom Drawing of Mario (Hat, shirt, overalls, boots - scaled 1.5x)
+function drawMario(ctx, x, y, scaleY = 1) {
+    const isSuper = mario.isSuper;
+    const facingRight = (mario.facing === 'right');
+    
+    ctx.save();
+    ctx.translate(x + mario.width/2, y + mario.height/2);
+    if (!facingRight) {
+        ctx.scale(-1, 1);
+    }
+    
+    // Scale drawings by 1.5x to match the physical collision dimensions
+    ctx.scale(1.5, 1.5);
+
+    if (mario.invincibleTimer > 0 && Math.floor(mario.invincibleTimer / 4) % 2 === 0) {
+        ctx.globalAlpha = 0.3;
+    }
+
+    const RED = '#E41212';
+    const BLUE = '#103BE4';
+    const SKIN = '#FCE0A0';
+    const BROWN = '#844400';
+    
+    if (!isSuper) {
+        // SMALL MARIO (Centered around 0,0 locally)
+        ctx.fillStyle = RED;
+        ctx.fillRect(-6, -8, 10, 3);
+        ctx.fillRect(-4, -10, 6, 2);
+        
+        ctx.fillStyle = BROWN;
+        ctx.fillRect(-7, -7, 2, 4);
+        ctx.fillRect(-5, -6, 2, 2);
+        ctx.fillRect(0, -7, 2, 2);
+        ctx.fillRect(1, -5, 4, 2);
+        
+        ctx.fillStyle = SKIN;
+        ctx.fillRect(-5, -8, 1, 1);
+        ctx.fillRect(-4, -8, 6, 2);
+        ctx.fillRect(-3, -6, 3, 2);
+        ctx.fillRect(0, -6, 3, 1);
+        ctx.fillRect(-2, -4, 4, 1);
+        
+        const walkPhase = Math.floor(mario.animFrame) % 3;
+        
+        if (mario.state === 'jumping') {
+            ctx.fillStyle = BLUE;
+            ctx.fillRect(-4, -3, 8, 7);
+            ctx.fillStyle = RED;
+            ctx.fillRect(-5, -3, 2, 4);
+            ctx.fillRect(3, -1, 2, 3);
+            ctx.fillStyle = BROWN;
+            ctx.fillRect(-6, 4, 3, 2);
+            ctx.fillRect(2, 3, 3, 2);
+        } else if (mario.state === 'walking' || mario.state === 'running') {
+            ctx.fillStyle = BLUE;
+            ctx.fillRect(-4, -3, 8, 6);
+            ctx.fillStyle = RED;
+            if (walkPhase === 0) {
+                ctx.fillRect(-5, -3, 2, 4);
+                ctx.fillStyle = BROWN;
+                ctx.fillRect(-5, 3, 3, 2);
+                ctx.fillRect(1, 3, 4, 2);
+            } else if (walkPhase === 1) {
+                ctx.fillRect(-4, -3, 2, 3);
+                ctx.fillStyle = BROWN;
+                ctx.fillRect(-4, 3, 3, 2);
+                ctx.fillRect(2, 3, 3, 2);
+            } else {
+                ctx.fillRect(-3, -3, 2, 4);
+                ctx.fillStyle = BROWN;
+                ctx.fillRect(-3, 3, 4, 2);
+                ctx.fillRect(0, 3, 3, 2);
+            }
+        } else {
+            ctx.fillStyle = BLUE;
+            ctx.fillRect(-4, -3, 8, 6);
+            ctx.fillStyle = RED;
+            ctx.fillRect(-6, -3, 2, 4);
+            ctx.fillRect(4, -3, 2, 4);
+            ctx.fillStyle = BROWN;
+            ctx.fillRect(-5, 3, 4, 2);
+            ctx.fillRect(1, 3, 4, 2);
+        }
+    } else {
+        // SUPER (BIG) MARIO (Centered around 0,0 locally)
+        ctx.fillStyle = RED;
+        ctx.fillRect(-7, -16, 12, 3);
+        ctx.fillRect(-5, -19, 9, 3);
+        
+        ctx.fillStyle = SKIN;
+        ctx.fillRect(-5, -13, 9, 6);
+        ctx.fillStyle = BROWN;
+        ctx.fillRect(-8, -13, 3, 5);
+        ctx.fillRect(-5, -11, 2, 2);
+        ctx.fillRect(0, -12, 2, 3);
+        ctx.fillRect(0, -9, 6, 2.5);
+        
+        ctx.fillStyle = SKIN;
+        ctx.fillRect(2, -11, 3, 2);
+        
+        ctx.fillStyle = RED;
+        ctx.fillRect(-7, -7, 13, 10);
+        
+        ctx.fillStyle = BLUE;
+        ctx.fillRect(-5, -7, 9, 17);
+        ctx.fillRect(-5, -7, 2, 6);
+        ctx.fillRect(2, -7, 2, 6);
+        
+        ctx.fillStyle = RED;
+        if (mario.state === 'jumping') {
+            ctx.fillRect(-9, -7, 3, 8);
+            ctx.fillRect(5, -10, 3, 8);
+        } else {
+            ctx.fillRect(-9, -7, 3, 8);
+            ctx.fillRect(5, -7, 3, 8);
+        }
+
+        const walkPhase = Math.floor(mario.animFrame) % 3;
+        ctx.fillStyle = BROWN;
+        if (mario.state === 'jumping') {
+            ctx.fillRect(-7, 10, 4, 3);
+            ctx.fillRect(2, 8, 4, 3);
+        } else if (mario.state === 'walking' || mario.state === 'running') {
+            if (walkPhase === 0) {
+                ctx.fillRect(-8, 10, 4, 3);
+                ctx.fillRect(2, 10, 5, 3);
+            } else if (walkPhase === 1) {
+                ctx.fillRect(-6, 10, 4, 3);
+                ctx.fillRect(1, 10, 4, 3);
+            } else {
+                ctx.fillRect(-5, 10, 5, 3);
+                ctx.fillRect(0, 10, 4, 3);
+            }
+        } else {
+            ctx.fillRect(-7, 10, 5, 3);
+            ctx.fillRect(1, 10, 5, 3);
+        }
+    }
+    ctx.restore();
+}
+
+// Procedural Custom Goomba (matching the uploaded image layout)
+function drawGoomba(ctx, x, y, width, height, tick) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(width / 32, height / 32); // Use a crisp 32x32 canvas grid coordinate mapping
+
+    const isSquished = height < 15; // Squish compression logic
+    
+    if (isSquished) {
+        // Squished custom Goomba
+        ctx.fillStyle = '#8E4A23'; // Goomba Cap
+        ctx.fillRect(2, 22, 28, 4);
+        ctx.fillStyle = '#8E8E93'; // T-shirt
+        ctx.fillRect(8, 25, 16, 3);
+        ctx.fillStyle = '#FCD8A6'; // Skin
+        ctx.fillRect(10, 16, 12, 6);
+        ctx.fillStyle = '#3D2516'; // Hair
+        ctx.fillRect(9, 12, 14, 4);
+        ctx.restore();
+        return;
+    }
+
+    // --- LAYER 1: GOOMBA BROWN DOME BACKING ---
+    // Sits in the background behind the head and body to preserve the classic outline
+    ctx.fillStyle = '#8E4A23'; // Classic warm Goomba brown
+    ctx.beginPath();
+    ctx.ellipse(16, 17, 14, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#6E320D'; // Under-shading
+    ctx.beginPath();
+    ctx.ellipse(16, 17, 14, 10, 0, 0, Math.PI, false);
+    ctx.fill();
+
+    // --- LAYER 2: SHIRT / BODY ---
+    // Grey Stanford Nike style shirt
+    ctx.fillStyle = '#8E8E93'; // Medium grey t-shirt fabric
+    ctx.fillRect(9, 21, 14, 8); 
+    
+    // Shirt sleeves
+    ctx.fillStyle = '#6E6E73';
+    ctx.fillRect(7, 22, 2, 4);
+    ctx.fillRect(23, 22, 2, 4);
+
+    // Stanford crest white circle backing
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(16, 25, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Stanford Cardinal red crest inner detail
+    ctx.fillStyle = '#A6192E'; 
+    ctx.fillRect(14.5, 23.5, 3, 3);
+    ctx.fillStyle = '#1E5A22'; // Tiny green pixel for the redwood tree
+    ctx.fillRect(15.5, 23, 1, 2.5);
+
+    // Black Nike swoosh on viewer's right chest (character's left)
+    ctx.fillStyle = '#1C1C1E'; 
+    ctx.fillRect(19, 23, 2, 1);
+    ctx.fillRect(20, 22, 1, 1);
+
+    // --- LAYER 3: SHOES / FEET ---
+    // Large round walking boots with animated steps
+    const footAnim = Math.floor(tick / 8) % 2;
+    ctx.fillStyle = '#4A2306'; // Dark boot leather
+    
+    let leftShoeY = 28;
+    let rightShoeY = 28;
+    if (footAnim === 0) {
+        leftShoeY -= 2;
+    } else {
+        rightShoeY -= 2;
+    }
+
+    // Left boot
+    ctx.fillRect(5, leftShoeY, 9, 4);
+    ctx.fillStyle = '#8A4F16'; // Highlights
+    ctx.fillRect(6, leftShoeY, 7, 1.5);
+    
+    // Right boot
+    ctx.fillStyle = '#4A2306';
+    ctx.fillRect(18, rightShoeY, 9, 4);
+    ctx.fillStyle = '#8A4F16';
+    ctx.fillRect(19, rightShoeY, 7, 1.5);
+
+    // --- LAYER 4: THE CUSTOM PORTRAIT HEAD ---
+    // Fair skin face base
+    ctx.fillStyle = '#FCD8A6'; 
+    ctx.fillRect(10, 10, 12, 11); 
+    
+    // Facial shading and stubble
+    ctx.fillStyle = '#E09B70'; // Jawline shadow
+    ctx.fillRect(10, 17, 12, 4);
+    ctx.fillStyle = '#CCA085'; // Soft beard/chin shading
+    ctx.fillRect(12, 20, 8, 1);
+
+    // Hair structure (Messy brown locks)
+    ctx.fillStyle = '#3D2516'; // Core shadow hair
+    ctx.fillRect(9, 6, 14, 5); 
+    ctx.fillRect(8, 8, 2, 7);  // Left sideburn
+    ctx.fillRect(22, 8, 2, 7); // Right sideburn
+
+    ctx.fillStyle = '#5A3821'; // Mid-tone brown main hair
+    ctx.fillRect(9, 5, 14, 2);
+    ctx.fillRect(10, 7, 12, 3);
+    // Bangs dropping down
+    ctx.fillRect(10, 10, 2, 2);
+    ctx.fillRect(13, 10, 3, 2);
+    ctx.fillRect(17, 10, 2, 2);
+    ctx.fillRect(20, 10, 2, 1);
+
+    ctx.fillStyle = '#845333'; // Highlighted brown strands
+    ctx.fillRect(11, 4, 10, 1);
+    ctx.fillRect(12, 6, 4, 1);
+    ctx.fillRect(18, 6, 3, 1);
+
+    // Angry slanting eyebrows
+    ctx.fillStyle = '#1F120B'; 
+    // Left eyebrow slant
+    ctx.fillRect(11, 12, 3, 1);
+    ctx.fillRect(13, 13, 2, 1);
+    // Right eyebrow slant
+    ctx.fillRect(18, 12, 3, 1);
+    ctx.fillRect(17, 13, 2, 1);
+
+    // Eyes with deep focus
+    ctx.fillStyle = '#FFFFFF'; // Sclera white
+    ctx.fillRect(11, 14, 3, 2);
+    ctx.fillRect(18, 14, 3, 2);
+    ctx.fillStyle = '#111111'; // Iris black
+    ctx.fillRect(12, 14, 2, 2);
+    ctx.fillRect(18, 14, 2, 2);
+
+    // Nose bridge and structure
+    ctx.fillStyle = '#DCA080'; 
+    ctx.fillRect(15, 14, 2, 4);
+    ctx.fillStyle = '#C58868'; 
+    ctx.fillRect(15, 17, 2, 1);
+
+    // Deep frowning mouth line
+    ctx.fillStyle = '#000000'; 
+    ctx.fillRect(13, 19, 6, 1);
+    ctx.fillRect(12, 20, 1, 1); // Downward frown corners
+    ctx.fillRect(19, 20, 1, 1);
+    
+    ctx.fillStyle = '#D37272'; // Shadow lip details
+    ctx.fillRect(14, 20, 4, 1);
+
+    ctx.restore();
+}
+
+// Procedural Custom Yoshi Egg Drawing
+function drawYoshiEgg(ctx, x, y, width, height) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(width/24, height/24);
+
+    // Speckled white/green egg
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.ellipse(12, 12, 10, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Speckles/Spots
+    ctx.fillStyle = '#00A800';
+    ctx.beginPath();
+    ctx.arc(7, 8, 3, 0, Math.PI*2);
+    ctx.arc(16, 15, 4, 0, Math.PI*2);
+    ctx.arc(14, 7, 2.5, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// Procedural Custom Yoshi Drawing (Wild & Ridden State)
+function drawYoshiEntity(ctx, x, y, width, height, facing, animTick, isRidden) {
+    ctx.save();
+    ctx.translate(x + width/2, y + height/2);
+    if (facing === 'left') {
+        ctx.scale(-1, 1);
+    }
+    // Scale appropriately for larger character displays
+    ctx.scale(1.2, 1.2);
+
+    const GREEN = '#00A800';
+    const WHITE = '#FFFFFF';
+    const ORANGE = '#FC9C5C';
+    const RED = '#E41212';
+    const YELLOW = '#FCD8A0';
+
+    // Nose/Snout (Bulbous green)
+    ctx.fillStyle = GREEN;
+    ctx.beginPath();
+    ctx.arc(4, -4, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(-2, -8, 8, 8);
+
+    // Cheek structure
+    ctx.beginPath();
+    ctx.arc(-2, -4, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyes
+    ctx.fillStyle = WHITE;
+    ctx.fillRect(-4, -12, 4, 6);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(-3, -11, 2, 3);
+
+    // Spikes (Red crest)
+    ctx.fillStyle = RED;
+    ctx.fillRect(-8, -10, 3, 4);
+    ctx.fillRect(-9, -7, 2, 3);
+
+    // Neck / Torso
+    ctx.fillStyle = GREEN;
+    ctx.fillRect(-7, -2, 6, 11);
+
+    // Saddle Shell
+    if (!isRidden) {
+        ctx.fillStyle = ORANGE;
+        ctx.fillRect(-11, 1, 4, 5);
+        ctx.fillStyle = WHITE;
+        ctx.fillRect(-11, 0, 4, 1);
+    }
+
+    // Tail
+    ctx.fillStyle = GREEN;
+    ctx.beginPath();
+    ctx.moveTo(-7, 4);
+    ctx.lineTo(-12, 6);
+    ctx.lineTo(-7, 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // White chest/belly highlights
+    ctx.fillStyle = WHITE;
+    ctx.fillRect(-3, 1, 4, 7);
+    ctx.beginPath();
+    ctx.arc(1, 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Leg details with walking animations
+    const legWalk = Math.floor(animTick / 8) % 2;
+    ctx.fillStyle = ORANGE;
+    if (legWalk === 0) {
+        ctx.fillRect(-5, 9, 3, 3);
+        ctx.fillStyle = YELLOW;
+        ctx.fillRect(-6, 12, 5, 2);
+        
+        ctx.fillStyle = ORANGE;
+        ctx.fillRect(-1, 9, 3, 2);
+        ctx.fillStyle = YELLOW;
+        ctx.fillRect(-2, 11, 4, 2);
+    } else {
+        ctx.fillRect(-5, 9, 3, 2);
+        ctx.fillStyle = YELLOW;
+        ctx.fillRect(-6, 11, 4, 2);
+        
+        ctx.fillStyle = ORANGE;
+        ctx.fillRect(-1, 9, 3, 3);
+        ctx.fillStyle = YELLOW;
+        ctx.fillRect(-2, 12, 5, 2);
+    }
+
+    ctx.restore();
+}
+
+// Procedural Bowser Boss Drawing (48x48 space mapping)
+function drawBowser(ctx, x, y, width, height, tick) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(width / 48, height / 48);
+
+    const GREEN = '#008800';
+    const YELLOW = '#FCD8A0';
+    const ORANGE = '#FC9C5C';
+    const RED = '#E41212';
+    const WHITE = '#FFFFFF';
+    const BLACK = '#000000';
+
+    // 1. Spiky Shell Backing
+    ctx.fillStyle = GREEN;
+    ctx.beginPath();
+    ctx.ellipse(30, 24, 16, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = WHITE;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Shell Spikes
+    ctx.fillStyle = WHITE;
+    ctx.strokeStyle = BLACK;
+    ctx.lineWidth = 1;
+    const spikes = [
+        {x: 20, y: 15}, {x: 28, y: 10}, {x: 36, y: 16},
+        {x: 24, y: 26}, {x: 34, y: 28}
+    ];
+    spikes.forEach(s => {
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x + 4, s.y - 6);
+        ctx.lineTo(s.x + 8, s.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    });
+
+    // 2. Yellow Body Base
+    ctx.fillStyle = YELLOW;
+    ctx.fillRect(14, 16, 14, 20);
+    ctx.beginPath();
+    ctx.ellipse(20, 24, 10, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(40, 28);
+    ctx.lineTo(46, 32);
+    ctx.lineTo(38, 34);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Boss Dragon Head
+    ctx.fillStyle = YELLOW;
+    ctx.fillRect(4, 4, 16, 14);
+    ctx.fillStyle = GREEN;
+    ctx.fillRect(4, 2, 14, 4);
+
+    // Orange hair/brow lines
+    ctx.fillStyle = ORANGE;
+    ctx.fillRect(10, -2, 10, 5);
+    ctx.fillRect(14, 1, 6, 8);
+
+    // Side horns
+    ctx.fillStyle = WHITE;
+    ctx.beginPath();
+    ctx.moveTo(18, 2);
+    ctx.lineTo(24, -3);
+    ctx.lineTo(20, 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Angry eyes
+    ctx.fillStyle = RED;
+    ctx.fillRect(6, 6, 6, 3);
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(7, 7, 3, 2);
+
+    // Snout / Angry Fangs
+    ctx.fillStyle = ORANGE;
+    ctx.fillRect(2, 9, 12, 6);
+    ctx.fillStyle = WHITE;
+    ctx.fillRect(4, 14, 2, 2);
+    ctx.fillRect(10, 14, 2, 2);
+
+    // 4. Stomp feet walking cycle
+    const walkPhase = Math.floor(tick / 10) % 2;
+    ctx.fillStyle = YELLOW;
+    
+    // Left leg
+    let lfY = 34;
+    if (walkPhase === 0) lfY += 2;
+    ctx.fillRect(10, lfY, 8, 8);
+    ctx.fillStyle = WHITE;
+    ctx.fillRect(8, lfY + 6, 3, 2);
+
+    // Right leg
+    let rfY = 34;
+    if (walkPhase === 1) rfY += 2;
+    ctx.fillStyle = YELLOW;
+    ctx.fillRect(24, rfY, 8, 8);
+    ctx.fillStyle = WHITE;
+    ctx.fillRect(22, rfY + 6, 3, 2);
+
+    ctx.restore();
+}
+
+// Procedural spinning fireballs
+function drawFireball(ctx, x, y, width, height, tick) {
+    const angle = (tick * 0.2) % (Math.PI * 2);
+    ctx.save();
+    ctx.translate(x + width/2, y + height/2);
+    ctx.rotate(angle);
+    
+    // Spinning orange cores
+    ctx.fillStyle = '#FFA500';
+    ctx.beginPath();
+    ctx.arc(0, 0, width/2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Flaring sparks
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(-width/2, -2, 2, 4);
+    ctx.fillRect(width/2 - 2, -2, 2, 4);
+    ctx.fillRect(-2, -height/2, 4, 2);
+    ctx.fillRect(-2, height/2 - 2, 4, 2);
+
+    ctx.fillStyle = '#FFFF00';
+    ctx.beginPath();
+    ctx.arc(0, 0, width/4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// Procedural bridge collapse trigger Axe drawing
+function drawAxe(ctx, x, y, width, height, tick) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Golden Chain links
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(width/2 - 2, 0, 4, height);
+
+    // Swinging animations
+    const swing = Math.sin(tick * 0.1) * 3;
+    ctx.translate(width/2, height/2);
+    ctx.rotate(swing * Math.PI / 180);
+
+    ctx.fillStyle = '#C0C0C0'; // Silver blade edge
+    ctx.beginPath();
+    ctx.arc(-4, 0, 8, -Math.PI/2, Math.PI/2, true);
+    ctx.fill();
+
+    // Axe Shaft
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(-2, -10, 4, 20);
+
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(-2, -2, 4, 4);
+
+    ctx.restore();
+}
+
+// Procedural Super Mushroom (scaled dynamically inside context)
+function drawMushroom(ctx, x, y, width, height) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(width / 24, height / 24); // Original model coords are 24x24
+    
+    ctx.fillStyle = '#E41212';
+    ctx.beginPath();
+    ctx.ellipse(12, 10, 12, 10, 0, 0, Math.PI, true);
+    ctx.fill();
+    ctx.fillRect(0, 9, 24, 4);
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(3, 2, 3, 3);
+    ctx.fillRect(18, 2, 3, 3);
+    ctx.fillRect(10, 5, 4, 3);
+    
+    ctx.fillStyle = '#FCE0A0';
+    ctx.fillRect(4, 10, 16, 6);
+    
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(6, 11, 1, 3);
+    ctx.fillRect(17, 11, 1, 3);
+    ctx.restore();
+}
+
+function drawCoin(ctx, x, y, w, h, tick) {
+    const scale = Math.abs(Math.sin(tick * 0.15));
+    ctx.save();
+    ctx.translate(x + w/2, y + h/2);
+    ctx.scale(scale, 1);
+    
+    ctx.fillStyle = '#FC9C5C';
+    ctx.beginPath();
+    ctx.arc(0, 0, w/2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(0, 0, w/4, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.restore();
+}
+
+function drawPipe(ctx, x, y, width, height) {
+    ctx.fillStyle = '#00A800';
+    ctx.fillRect(x - 2, y, width + 4, 16);
+    
+    ctx.fillStyle = '#008800';
+    ctx.fillRect(x, y + 16, width, height - 16);
+    
+    ctx.fillStyle = '#88D800';
+    ctx.fillRect(x + 3, y + 2, 4, 12);
+    ctx.fillRect(x + 5, y + 16, 5, height - 16);
+    
+    ctx.fillStyle = '#004400';
+    ctx.fillRect(x + width - 8, y + 2, 6, 12);
+    ctx.fillRect(x + width - 6, y + 16, 6, height - 16);
+    
+    ctx.fillStyle = '#000000';
+    ctx.strokeRect(x - 2, y, width + 4, 16);
+    ctx.strokeRect(x, y + 16, width, height - 16);
+}
+
+function drawCloud(ctx, x, y, scale) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(x, y, 12 * scale, 0, Math.PI*2);
+    ctx.arc(x + 14 * scale, y - 4 * scale, 15 * scale, 0, Math.PI*2);
+    ctx.arc(x + 32 * scale, y, 12 * scale, 0, Math.PI*2);
+    ctx.fill();
+    
+    ctx.fillRect(x - 12 * scale, y - 4 * scale, 45 * scale, 16 * scale);
+}
+
+function drawBush(ctx, x, y, width) {
+    ctx.fillStyle = '#00A800';
+    ctx.beginPath();
+    ctx.arc(x + 12, y + 12, 12, 0, Math.PI*2);
+    ctx.arc(x + width/2, y + 8, 16, 0, Math.PI*2);
+    ctx.arc(x + width - 12, y + 12, 12, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillRect(x, y + 8, width, 16);
+}
+</script>
+
+<script>
+// --- LEVEL DESIGN & GENERATION ---
+function initLevel() {
+    blocks = [];
+    enemies = [];
+    powerups = [];
+    projectiles = [];
+    decorationObjects = [];
+    particles = [];
+    
+    bridgeCollapsing = false;
+    bridgeCollapseTimer = 0;
+    
+    mario.reset();
+    cameraX = 0;
+
+    for (let x = 100; x < levelWidth; x += 350) {
+        decorationObjects.push({ type: 'cloud', x: x, y: 40 + Math.random() * 40, scale: 1.2 });
+        decorationObjects.push({ type: 'cloud', x: x + 150, y: 30 + Math.random() * 30, scale: 0.9 });
+        decorationObjects.push({ type: 'bush', x: x + 60, y: 192, width: 40 });
+        decorationObjects.push({ type: 'bush', x: x + 240, y: 192, width: 60 });
+    }
+
+    const segmentWidth = 32;
+    const totalSegments = Math.ceil(levelWidth / segmentWidth);
+    
+    for (let i = 0; i < totalSegments; i++) {
+        const x = i * segmentWidth;
+        
+        // Skip ground for pitfalls
+        if ((i >= 22 && i <= 24) || (i >= 45 && i <= 47) || (i >= 72 && i <= 74) || (i >= 98 && i <= 100)) {
+            continue; 
+        }
+
+        // Generate Castle Bridge structure under Bowser instead of typical ground
+        if (x >= 3584 && x <= 3776) {
+            blocks.push({
+                type: 'bridge',
+                x: x,
+                y: 208,
+                width: segmentWidth,
+                height: 16,
+                solid: true
+            });
+            continue;
+        }
+        
+        blocks.push({
+            type: 'ground',
+            x: x,
+            y: 208,
+            width: segmentWidth,
+            height: 32,
+            solid: true
+        });
+    }
+
+    const pipeLocations = [
+        { x: 450, height: 40 },
+        { x: 750, height: 60 },
+        { x: 1050, height: 80 },
+        { x: 1400, height: 80 },
+        { x: 2500, height: 40 },
+        { x: 3100, height: 60 }
+    ];
+    
+    pipeLocations.forEach(p => {
+        blocks.push({
+            type: 'pipe',
+            x: p.x,
+            y: 208 - p.height,
+            width: 36,
+            height: p.height,
+            solid: true
+        });
+    });
+
+    const interactiveBlocks = [
+        { x: 240, y: 128, type: 'question', contains: 'coin' },
+        { x: 272, y: 128, type: 'brick' },
+        { x: 304, y: 128, type: 'question', contains: 'mushroom' },
+        { x: 336, y: 128, type: 'brick' },
+        { x: 368, y: 128, type: 'question', contains: 'coin' },
+        { x: 304, y: 64, type: 'question', contains: 'coin' },
+        { x: 600, y: 128, type: 'brick' },
+        { x: 632, y: 128, type: 'question', contains: 'mushroom' },
+        { x: 664, y: 128, type: 'brick' },
+        // SPECIAL BLOCK: Yoshi Egg hatching block!
+        { x: 900, y: 128, type: 'question', contains: 'egg' },
+        { x: 1200, y: 128, type: 'brick' },
+        { x: 1232, y: 128, type: 'brick' },
+        { x: 1264, y: 128, type: 'brick' },
+        { x: 1296, y: 128, type: 'question', contains: 'coin' },
+        { x: 1328, y: 128, type: 'brick' },
+        { x: 1550, y: 64, type: 'brick' },
+        { x: 1582, y: 64, type: 'brick' },
+        { x: 1614, y: 64, type: 'question', contains: 'coin' },
+        { x: 1646, y: 64, type: 'brick' },
+        { x: 2000, y: 128, type: 'brick' },
+        { x: 2032, y: 128, type: 'brick' },
+        { x: 2064, y: 128, type: 'brick' },
+        { x: 2096, y: 128, type: 'brick' },
+        { x: 2128, y: 128, type: 'question', contains: 'mushroom' },
+        { x: 2160, y: 128, type: 'brick' },
+        { x: 2192, y: 128, type: 'brick' },
+        { x: 2700, y: 128, type: 'question', contains: 'coin' },
+        { x: 2760, y: 64, type: 'question', contains: 'coin' },
+        { x: 2820, y: 128, type: 'question', contains: 'coin' }
+    ];
+
+    interactiveBlocks.forEach(b => {
+        blocks.push({
+            type: b.type,
+            x: b.x,
+            y: b.y,
+            width: 32,
+            height: 32,
+            solid: true,
+            contains: b.contains || null,
+            isHit: false,
+            hitTimer: 0
+        });
+    });
+
+    const py1X = 3300;
+    for (let r = 0; r < 4; r++) {
+        for (let c = r; c < 4; c++) {
+            blocks.push({
+                type: 'solid_brown',
+                x: py1X + c * 24,
+                y: 208 - (4 - r) * 24,
+                width: 24,
+                height: 24,
+                solid: true
+            });
+        }
+    }
+    
+    const py2X = 3450;
+    for (let r = 0; r < 4; r++) {
+        for (let c = 0; c <= r; c++) {
+            blocks.push({
+                type: 'solid_brown',
+                x: py2X + c * 24,
+                y: 208 - (4 - r) * 24,
+                width: 24,
+                height: 24,
+                solid: true
+            });
+        }
+    }
+
+    // Bowser Bridge collapsing Trigger Axe
+    blocks.push({
+        type: 'axe',
+        x: 3808,
+        y: 176,
+        width: 24,
+        height: 32,
+        solid: false
+    });
+
+    blocks.push({
+        type: 'flagpole',
+        x: 3900,
+        y: 40,
+        width: 8,
+        height: 168,
+        solid: false
+    });
+    
+    blocks.push({
+        type: 'castle',
+        x: 4100,
+        y: 112,
+        width: 96,
+        height: 96,
+        solid: false
+    });
+
+    const goombaSpawns = [
+        350, 600, 900, 1150, 1300, 1600, 1800, 2200, 2400, 2800, 3000, 3200
+    ];
+    
+    goombaSpawns.forEach(gx => {
+        enemies.push({
+            x: gx,
+            y: 181,           // Aligned for larger Goomba height (208 - 27 = 181)
+            vx: -0.6,
+            vy: 0,
+            width: 27,        // Scaled up 1.5x (originally 18)
+            height: 27,       // Scaled up 1.5x (originally 18)
+            type: 'goomba',
+            state: 'walk',
+            isDead: false,
+            deadTimer: 0
+        });
+    });
+
+    // Spawn Bowser right in the middle of the bridge!
+    enemies.push({
+        x: 3650,
+        y: 160,
+        vx: -0.3,
+        vy: 0,
+        width: 48,
+        height: 48,
+        type: 'bowser',
+        state: 'boss',
+        isDead: false,
+        deadTimer: 0,
+        jumpTimer: 0,
+        fireTimer: 0
+    });
+}
+</script>
+
+<script>
+// --- PHYSICS AND COLLISION SYSTEM ---
+function isOverlapping(rect1, rect2) {
+    return rect1.x < rect2.x + rect2.width &&
+           rect1.x + rect1.width > rect2.x &&
+           rect1.y < rect2.y + rect2.height &&
+           rect1.y + rect1.height > rect2.y;
+}
+
+function spawnParticle(x, y, vx, vy, color, type = 'brick') {
+    particles.push({
+        x: x,
+        y: y,
+        vx: vx,
+        vy: vy,
+        color: color,
+        life: 30,
+        type: type
+    });
+}
+
+function spawnCoinActive(x, y) {
+    playSound('coin');
+    score += 200;
+    coins += 1;
+    updateHUD();
+    
+    const coinObj = {
+        x: x + 8,
+        y: y - 16,
+        vy: -4,
+        tick: 0,
+        life: 25
+    };
+    
+    const coinInterval = setInterval(() => {
+        coinObj.y += coinObj.vy;
+        coinObj.vy += 0.4;
+        coinObj.tick++;
+        
+        ctx.save();
+        drawCoin(ctx, coinObj.x - cameraX, coinObj.y, 14, 18, coinObj.tick);
+        ctx.restore();
+        
+        if (coinObj.tick >= coinObj.life) {
+            clearInterval(coinInterval);
+        }
+    }, 1000/60);
+}
+
+function updatePhysics() {
+    // Dynamic early-return for active Death Animations
+    if (mario.state === 'dying') {
+        mario.y += mario.vy;
+        mario.vy += 0.22; // Slower, smoother retro gravity arc
+        mario.dyingTimer++;
+        if (mario.dyingTimer > 90) { // Snappier 1.5 second timing down from 120
+            handleLifeLoss();
+        }
+        return;
+    }
+
+    if (mario.state === 'flagSlide') {
+        mario.y += 1.5;
+        if (mario.y >= 192) {
+            mario.y = 192;
+            mario.state = 'castleWalk';
+            mario.facing = 'right';
+            playSound('victory');
+        }
+        return;
+    }
+
+    if (mario.state === 'castleWalk') {
+        mario.x += 1;
+        mario.animFrame += 0.15;
+        if (mario.x >= 4140) {
+            showVictoryScreen();
+        }
+        return;
+    }
+
+    if (mario.invincibleTimer > 0) {
+        mario.invincibleTimer--;
+    }
+
+    // Yoshi Flutter Jump hover physics
+    if (mario.ridingYoshi) {
+        if (keys.up && mario.vy > 0.2 && mario.flutterTimer < 30) {
+            mario.vy = -0.5; // Hover counter-force
+            mario.flutterTimer++;
+            if (mario.flutterTimer % 6 === 0) {
+                playSound('flutter');
+            }
+        }
+    }
+
+    // Variable jump control: cut upward velocity if jump button is released early
+    if (!keys.up && mario.vy < MIN_JUMP_FORCE) {
+        mario.vy = MIN_JUMP_FORCE;
+    }
+
+    const accel = mario.grounded ? 0.2 : 0.1;
+    const drag = FRICTION;
+    const maxSpeed = keys.run ? RUN_SPEED : WALK_SPEED;
+
+    if (keys.left) {
+        mario.vx -= accel;
+        mario.facing = 'left';
+        if (mario.grounded) mario.state = 'walking';
+    } else if (keys.right) {
+        mario.vx += accel;
+        mario.facing = 'right';
+        if (mario.grounded) mario.state = 'walking';
+    } else {
+        mario.vx *= drag;
+        if (Math.abs(mario.vx) < 0.15) {
+            mario.vx = 0;
+            if (mario.grounded) mario.state = 'idle';
+        }
+    }
+
+    if (mario.vx > maxSpeed) mario.vx = maxSpeed;
+    if (mario.vx < -maxSpeed) mario.vx = -maxSpeed;
+
+    mario.vy += GRAVITY;
+    if (mario.vy > 8) mario.vy = 8;
+
+    mario.grounded = false;
+
+    // Horizontal Movement
+    mario.x += mario.vx;
+    
+    if (mario.x < cameraX) {
+        mario.x = cameraX;
+        mario.vx = 0;
+    }
+    if (mario.x > levelWidth - mario.width) {
+        mario.x = levelWidth - mario.width;
+        mario.vx = 0;
+    }
+
+    blocks.forEach(block => {
+        if (!block.solid) return;
+        
+        if (isOverlapping(mario, block)) {
+            if (mario.vx > 0) {
+                mario.x = block.x - mario.width;
+                mario.vx = 0;
+            } else if (mario.vx < 0) {
+                mario.x = block.x + block.width;
+                mario.vx = 0;
+            }
+        }
+    });
+
+    // Vertical Movement
+    mario.y += mario.vy;
+
+    blocks.forEach(block => {
+        if (!block.solid) {
+            if (block.type === 'flagpole' && isOverlapping(mario, block) && mario.state !== 'flagSlide' && mario.state !== 'castleWalk') {
+                mario.state = 'flagSlide';
+                mario.vx = 0;
+                mario.vy = 0;
+                mario.x = block.x - 6; // Center larger Mario visually on the flagpole
+                score += 2000;
+                updateHUD();
+                playSound('victory');
+            }
+            return;
+        }
+
+        if (isOverlapping(mario, block)) {
+            if (mario.vy > 0) {
+                mario.y = block.y - mario.height;
+                mario.vy = 0;
+                mario.grounded = true;
+                mario.flutterTimer = 0; // Reset Yoshi's flight counter
+                if (mario.state !== 'walking' && mario.vx !== 0) {
+                    mario.state = 'walking';
+                }
+            } else if (mario.vy < 0) {
+                mario.y = block.y + block.height;
+                mario.vy = 0;
+                handleBlockHeadbutt(block);
+            }
+        }
+    });
+
+    // Axe collision checks to collapse bridge
+    blocks.forEach((block, bIdx) => {
+        if (block.type === 'axe' && isOverlapping(mario, block)) {
+            playSound('victory');
+            bridgeCollapsing = true;
+            bridgeCollapseTimer = 0;
+            blocks.splice(bIdx, 1); // Delete trigger axe instantly
+        }
+    });
+
+    // Handle structural bridge destruction
+    if (bridgeCollapsing) {
+        bridgeCollapseTimer++;
+        if (bridgeCollapseTimer % 8 === 0) {
+            const bridgeBlocks = blocks.filter(b => b.type === 'bridge');
+            if (bridgeBlocks.length > 0) {
+                playSound('stomp'); // Low crash noise
+                bridgeBlocks.sort((a,b) => a.x - b.x);
+                const firstPlank = bridgeBlocks[0];
+                spawnParticle(firstPlank.x, firstPlank.y, -1, -2, '#7C7C7C');
+                spawnParticle(firstPlank.x + 16, firstPlank.y, 1, -2, '#7C7C7C');
+                blocks = blocks.filter(b => b !== firstPlank);
+            } else {
+                bridgeCollapsing = false;
+            }
+        }
+    }
+
+    // Floor Boundary / Abyss falling death trigger
+    if (mario.y > VIRT_HEIGHT) {
+        triggerMarioDeath();
+        return;
+    }
+
+    if (mario.state !== 'dying' && mario.state !== 'flagSlide' && mario.state !== 'castleWalk') {
+        if (mario.grounded) {
+            if (mario.vx !== 0) {
+                mario.animFrame += keys.run ? 0.35 : 0.2;
+            } else {
+                mario.animFrame = 0;
+            }
+        } else {
+            mario.state = 'jumping';
+        }
+    }
+
+    // Parallax Screen Camera Lock
+    if (mario.x > cameraX + VIRT_WIDTH / 2) {
+        cameraX = Math.floor(mario.x - VIRT_WIDTH / 2);
+    }
+    if (cameraX < 0) cameraX = 0;
+    if (cameraX > levelWidth - VIRT_WIDTH) cameraX = levelWidth - VIRT_WIDTH;
+
+    // Power-up updates
+    powerups.forEach((p, idx) => {
+        // Handle egg hatching cycles
+        if (p.type === 'egg') {
+            p.vy += GRAVITY;
+            p.y += p.vy;
+            blocks.forEach(b => {
+                if (b.solid && isOverlapping(p, b)) {
+                    if (p.vy > 0) {
+                        p.y = b.y - p.height;
+                        p.vy = 0;
+                    }
+                }
+            });
+
+            p.timer--;
+            if (p.timer <= 0) {
+                playSound('powerup');
+                p.type = 'yoshi_wild';
+                p.width = 28;
+                p.height = 28;
+                p.vx = 0.8;
+            }
+            return;
+        }
+
+        // Active walking/hopping wild Yoshi companion
+        if (p.type === 'yoshi_wild') {
+            p.vy += GRAVITY;
+            p.x += p.vx;
+            
+            blocks.forEach(b => {
+                if (b.solid && isOverlapping(p, b)) {
+                    if (p.vx > 0) {
+                        p.x = b.x - p.width;
+                        p.vx = -p.vx;
+                    } else if (p.vx < 0) {
+                        p.x = b.x + b.width;
+                        p.vx = -p.vx;
+                    }
+                }
+            });
+
+            p.y += p.vy;
+            blocks.forEach(b => {
+                if (b.solid && isOverlapping(p, b)) {
+                    if (p.vy > 0) {
+                        p.y = b.y - p.height;
+                        p.vy = 0;
+                        if (Math.random() < 0.05) {
+                            p.vy = -3; // companion hop
+                        }
+                    }
+                }
+            });
+
+            // Mount wild Yoshi (only if not currently invincible from post-damage cooldown)
+            if (isOverlapping(p, mario) && mario.state !== 'dying' && mario.invincibleTimer === 0) {
+                playSound('powerup');
+                mario.ridingYoshi = true;
+                powerups.splice(idx, 1);
+            }
+            return;
+        }
+
+        p.vy += GRAVITY;
+        p.x += p.vx;
+        
+        blocks.forEach(b => {
+            if (!b.solid) return;
+            if (isOverlapping(p, b)) {
+                if (p.vx > 0) {
+                    p.x = b.x - p.width;
+                    p.vx = -p.vx;
+                } else if (p.vx < 0) {
+                    p.x = b.x + b.width;
+                    p.vx = -p.vx;
+                }
+            }
+        });
+
+        p.y += p.vy;
+        
+        blocks.forEach(b => {
+            if (!b.solid) return;
+            if (isOverlapping(p, b)) {
+                if (p.vy > 0) {
+                    p.y = b.y - p.height;
+                    p.vy = 0;
+                }
+            }
+        });
+
+        if (isOverlapping(p, mario)) {
+            playSound('powerup');
+            mario.isSuper = true;
+            mario.width = 24;    // Scaled up 1.5x (originally 16)
+            mario.height = 48;   // Scaled up 1.5x (originally 32)
+            mario.y -= 24;       // Smooth visual growth offset
+            score += 1000;
+            updateHUD();
+            
+            for(let i=0; i<8; i++) {
+                spawnParticle(p.x, p.y, (Math.random()-0.5)*4, (Math.random()-0.5)*4, '#FC9C5C', 'spark');
+            }
+            powerups.splice(idx, 1);
+        }
+    });
+
+    // Enemy Patrol & Boss AI updates
+    enemies.forEach((enemy, idx) => {
+        if (enemy.isDead) {
+            enemy.deadTimer++;
+            if (enemy.deadTimer > 30) {
+                enemies.splice(idx, 1);
+            }
+            return;
+        }
+
+        // Bowser Boss AI logic
+        if (enemy.type === 'bowser') {
+            enemy.vy += GRAVITY;
+            enemy.x += enemy.vx;
+
+            // Patrol Bridge confines
+            if (enemy.x <= 3590) enemy.vx = 0.4;
+            if (enemy.x >= 3740) enemy.vx = -0.4;
+
+            // Handle bridge floor checks
+            enemy.y += enemy.vy;
+            blocks.forEach(b => {
+                if (b.solid && isOverlapping(enemy, b)) {
+                    if (enemy.vy > 0) {
+                        enemy.y = b.y - enemy.height;
+                        enemy.vy = 0;
+                    }
+                }
+            });
+
+            // Random boss leap cycles
+            enemy.jumpTimer++;
+            if (enemy.jumpTimer > 150 && enemy.vy === 0) {
+                enemy.vy = -6.0;
+                enemy.jumpTimer = 0;
+            }
+
+            // Fireball Spitting cycle
+            enemy.fireTimer++;
+            if (enemy.fireTimer > 120) {
+                enemy.fireTimer = 0;
+                playSound('stomp'); // Low bass chiptune hum
+                projectiles.push({
+                    x: enemy.x - 12,
+                    y: enemy.y + 12 + (Math.random() - 0.5) * 16,
+                    vx: -1.8,
+                    vy: 0,
+                    width: 16,
+                    height: 12,
+                    type: 'fireball'
+                });
+            }
+
+            // Defeat by falling into the abyss (bridge collapse)
+            if (enemy.y > VIRT_HEIGHT) {
+                score += 5000;
+                updateHUD();
+                enemies.splice(idx, 1);
+            }
+
+            // Contact hazard
+            if (isOverlapping(enemy, mario)) {
+                handleMarioDamage();
+            }
+            return;
+        }
+
+        enemy.vy += GRAVITY;
+        enemy.x += enemy.vx;
+
+        blocks.forEach(b => {
+            if (!b.solid) return;
+            if (isOverlapping(enemy, b)) {
+                if (enemy.vx > 0) {
+                    enemy.x = b.x - enemy.width;
+                    enemy.vx = -enemy.vx;
+                } else if (enemy.vx < 0) {
+                    enemy.x = b.x + b.width;
+                    enemy.vx = -enemy.vx;
+                }
+            }
+        });
+
+        enemy.y += enemy.vy;
+        blocks.forEach(b => {
+            if (!b.solid) return;
+            if (isOverlapping(enemy, b)) {
+                if (enemy.vy > 0) {
+                    enemy.y = b.y - enemy.height;
+                    enemy.vy = 0;
+                }
+            }
+        });
+
+        if (isOverlapping(enemy, mario)) {
+            if (mario.vy > 0.5 && mario.y < enemy.y + 4) {
+                playSound('stomp');
+                enemy.isDead = true;
+                enemy.state = 'squished';
+                enemy.vx = 0;
+                mario.vy = -4.5;
+                score += 100;
+                updateHUD();
+            } else {
+                handleMarioDamage();
+            }
+        }
+    });
+
+    // Update Fireball Projectiles
+    projectiles.forEach((proj, pIdx) => {
+        proj.x += proj.vx;
+        
+        // Spawn trailing sparks
+        if (Math.random() < 0.25) {
+            spawnParticle(proj.x + proj.width, proj.y + proj.height/2, Math.random() * 0.5, (Math.random() - 0.5) * 1, '#FC9C5C', 'spark');
+        }
+
+        if (isOverlapping(proj, mario) && mario.state !== 'dying') {
+            handleMarioDamage();
+            projectiles.splice(pIdx, 1);
+            return;
+        }
+
+        // Cleanup offscreen fireballs
+        if (proj.x < cameraX - 50 || proj.x > cameraX + VIRT_WIDTH + 50) {
+            projectiles.splice(pIdx, 1);
+        }
+    });
+
+    particles.forEach((part, idx) => {
+        part.x += part.vx;
+        part.y += part.vy;
+        part.vy += GRAVITY * 0.5;
+        part.life--;
+        if (part.life <= 0) {
+            particles.splice(idx, 1);
+        }
+    });
+}
+</script>
+
+<script>
+// --- BLOCK INTERACTIONS ---
+function handleBlockHeadbutt(block) {
+    if (block.type === 'brick') {
+        if (mario.isSuper) {
+            playSound('brick_break');
+            score += 50;
+            updateHUD();
+            
+            spawnParticle(block.x, block.y, -2, -4, '#C84C0C');
+            spawnParticle(block.x + 16, block.y, 2, -4, '#C84C0C');
+            spawnParticle(block.x, block.y + 16, -2, -2, '#C84C0C');
+            spawnParticle(block.x + 16, block.y + 16, 2, -2, '#C84C0C');
+
+            blocks = blocks.filter(b => b !== block);
+        } else {
+            playSound('stomp');
+            block.hitTimer = 6;
+        }
+    } else if (block.type === 'question') {
+        if (!block.isHit) {
+            block.isHit = true;
+            block.hitTimer = 8;
+            
+            if (block.contains === 'coin') {
+                spawnCoinActive(block.x, block.y);
+            } else if (block.contains === 'mushroom') {
+                playSound('powerup_spawn');
+                powerups.push({
+                    x: block.x + 2,
+                    y: block.y - 28,  // Adjusted for scaled mushroom size
+                    vx: 1.0,
+                    vy: -2,
+                    width: 28,        // Scaled up 1.5x (originally 24)
+                    height: 28,       // Scaled up 1.5x (originally 24)
+                    type: 'mushroom'
+                });
+            } else if (block.contains === 'egg') {
+                playSound('powerup_spawn');
+                powerups.push({
+                    x: block.x + 4,
+                    y: block.y - 28,
+                    vx: 0.6,
+                    vy: -3,
+                    width: 24,
+                    height: 24,
+                    type: 'egg',
+                    timer: 60 // Hatches after 1 second
+                });
+            }
+        }
+    }
+}
+
+// --- MARIO DAMAGE & LIVES MANAGEMENT ---
+function handleMarioDamage() {
+    if (mario.invincibleTimer > 0) return;
+
+    if (mario.ridingYoshi) {
+        playSound('shrink');
+        mario.ridingYoshi = false;
+        mario.invincibleTimer = 90;
+        
+        // Spawn runaway wild Yoshi running in opposite directions!
+        powerups.push({
+            x: mario.x,
+            y: mario.y,
+            vx: -1.5 * (mario.facing === 'right' ? 1 : -1),
+            vy: -4,
+            width: 28,
+            height: 28,
+            type: 'yoshi_wild'
+        });
+    } else if (mario.isSuper) {
+        playSound('shrink');
+        mario.isSuper = false;
+        mario.width = 21;     // Scaled back to Small Mario dimensions
+        mario.height = 24;    // Scaled back to Small Mario dimensions
+        mario.invincibleTimer = 90;
+    } else {
+        triggerMarioDeath();
+    }
+}
+
+function triggerMarioDeath() {
+    if (mario.state === 'dying') return;
+
+    mario.state = 'dying';
+    mario.vx = 0;
+    mario.vy = -6.5; // Upward leap velocity
+    
+    // Position fallen Mario on-screen so the death animation is visible
+    if (mario.y >= VIRT_HEIGHT) {
+        mario.y = VIRT_HEIGHT - 12;
+    }
+    
+    mario.dyingTimer = 0;
+    playSound('die');
+}
+
+function handleLifeLoss() {
+    lives--;
+    updateHUD();
+    
+    if (lives > 0) {
+        showLevelIntro();
+    } else {
+        showGameOverScreen();
+    }
+}
+</script>
+
+<script>
+// --- CANVAS DRAWING PIPELINE ---
+let globalAnimTick = 0;
+
+function drawGame() {
+    ctx.fillStyle = '#5c94fc';
+    ctx.fillRect(0, 0, VIRT_WIDTH, VIRT_HEIGHT);
+
+    ctx.save();
+    ctx.translate(-Math.floor(cameraX * 0.3), 0);
+    decorationObjects.forEach(d => {
+        if (d.type === 'cloud') {
+            drawCloud(ctx, d.x, d.y, d.scale);
+        }
+    });
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-Math.floor(cameraX * 0.7), 0);
+    decorationObjects.forEach(d => {
+        if (d.type === 'bush') {
+            drawBush(ctx, d.x, d.y, d.width);
+        }
+    });
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+
+    blocks.forEach(block => {
+        if (block.x + block.width < cameraX || block.x > cameraX + VIRT_WIDTH) return;
+
+        let renderY = block.y;
+        if (block.hitTimer > 0) {
+            block.hitTimer--;
+            renderY -= Math.sin((block.hitTimer / 8) * Math.PI) * 4;
+        }
+
+        if (block.type === 'ground' || block.type === 'brick') {
+            drawBrick(ctx, block.x, renderY, block.width, block.height);
+        } else if (block.type === 'bridge') {
+            // Draw custom bridge planks with rope links
+            ctx.fillStyle = '#A85400';
+            ctx.fillRect(block.x, block.y, block.width, 8);
+            ctx.fillStyle = '#000000';
+            ctx.strokeRect(block.x, block.y, block.width, 8);
+            
+            ctx.fillStyle = '#FCE0A0';
+            ctx.fillRect(block.x + 2, block.y + 8, 4, 3);
+            ctx.fillRect(block.x + block.width - 6, block.y + 8, 4, 3);
+        } else if (block.type === 'axe') {
+            drawAxe(ctx, block.x, renderY, block.width, block.height, globalAnimTick);
+        } else if (block.type === 'question') {
+            if (block.isHit) {
+                drawUsedBlock(ctx, block.x, renderY, block.width, block.height);
+            } else {
+                drawQuestionBlock(ctx, block.x, renderY, block.width, block.height, globalAnimTick);
+            }
+        } else if (block.type === 'solid_brown') {
+            drawSolidBrownBlock(ctx, block.x, renderY, block.width, block.height);
+        } else if (block.type === 'pipe') {
+            drawPipe(ctx, block.x, renderY, block.width, block.height);
+        } else if (block.type === 'flagpole') {
+            ctx.fillStyle = '#CCCCCC';
+            ctx.fillRect(block.x + 3, block.y + 8, 2, block.height - 8);
+            ctx.fillStyle = '#008800';
+            ctx.beginPath();
+            ctx.arc(block.x + 4, block.y + 4, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            let flagY = block.y + 12;
+            if (mario.state === 'flagSlide') {
+                flagY = mario.y + 12;
+                if (flagY > block.y + block.height - 24) flagY = block.y + block.height - 24;
+            }
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(block.x - 16, flagY, 16, 12);
+            ctx.fillStyle = '#00A800';
+            ctx.font = 'bold 8px "Press Start 2P"';
+            ctx.fillText('★', block.x - 14, flagY + 10);
+        } else if (block.type === 'castle') {
+            ctx.fillStyle = '#9C9C9C';
+            ctx.fillRect(block.x, block.y, block.width, block.height);
+            ctx.fillStyle = '#7C7C7C';
+            for (let cx = block.x; cx < block.x + block.width; cx += 16) {
+                ctx.fillRect(cx, block.y - 8, 8, 8);
+            }
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(block.x + block.width/2 - 12, block.y + block.height - 32, 24, 32);
+        }
+    });
+
+    powerups.forEach(p => {
+        if (p.type === 'mushroom') {
+            drawMushroom(ctx, p.x, p.y, p.width, p.height);
+        } else if (p.type === 'egg') {
+            drawYoshiEgg(ctx, p.x, p.y, p.width, p.height);
+        } else if (p.type === 'yoshi_wild') {
+            drawYoshiEntity(ctx, p.x, p.y, p.width, p.height, p.vx > 0 ? 'right' : 'left', globalAnimTick, false);
+        }
+    });
+
+    enemies.forEach(enemy => {
+        if (enemy.type === 'goomba') {
+            drawGoomba(ctx, enemy.x, enemy.y, enemy.width, enemy.height, globalAnimTick);
+        } else if (enemy.type === 'bowser') {
+            drawBowser(ctx, enemy.x, enemy.y, enemy.width, enemy.height, globalAnimTick);
+        }
+    });
+
+    projectiles.forEach(proj => {
+        if (proj.type === 'fireball') {
+            drawFireball(ctx, proj.x, proj.y, proj.width, proj.height, globalAnimTick);
+        }
+    });
+
+    particles.forEach(part => {
+        ctx.fillStyle = part.color;
+        if (part.type === 'spark') {
+            ctx.fillRect(part.x, part.y, 4, 4);
+        } else {
+            ctx.fillRect(part.x, part.y, 6, 6);
+        }
+    });
+
+    // Draw Mario with riding offset considerations
+    if (mario.ridingYoshi) {
+        drawYoshiEntity(ctx, mario.x - 4, mario.y + 10, 28, 28, mario.facing, globalAnimTick, true);
+        ctx.save();
+        // Shift Mario drawing up to fit properly onto saddle
+        drawMario(ctx, mario.x, mario.y - 10);
+        ctx.restore();
+    } else {
+        drawMario(ctx, mario.x, mario.y);
+    }
+
+    ctx.restore();
+    globalAnimTick++;
+}
+
+// --- HUD DISPLAY REFRESH ---
+const hudScore = document.getElementById('score-val');
+const hudCoins = document.getElementById('coins-val');
+const hudLives = document.getElementById('lives-val');
+
+function updateHUD() {
+    hudScore.textContent = String(score).padStart(6, '0');
+    hudCoins.textContent = 'x' + String(coins).padStart(2, '0');
+    hudLives.textContent = 'x' + String(lives);
+}
+</script>
+
+<script>
+// --- UI SCREEN CONTROLLER AND NAVIGATION ---
+const screenMenu = document.getElementById('screen-menu');
+const screenIntro = document.getElementById('screen-intro');
+const screenGameOver = document.getElementById('screen-gameover');
+const screenVictory = document.getElementById('screen-victory');
+const introLives = document.getElementById('intro-lives');
+const finalScore = document.getElementById('final-score');
+
+function startGame() {
+    score = 0;
+    coins = 0;
+    lives = 3;
+    updateHUD();
+    showLevelIntro();
+}
+
+function showLevelIntro() {
+    gameState = 'INTRO';
+    screenMenu.classList.add('hidden');
+    screenGameOver.classList.add('hidden');
+    screenVictory.classList.add('hidden');
+    
+    introLives.textContent = lives;
+    screenIntro.classList.remove('hidden');
+    
+    initLevel();
+
+    const lifeCanvas = document.getElementById('mario-life-icon');
+    if (lifeCanvas) {
+        lifeCanvas.innerHTML = '';
+        const canvasIcon = document.createElement('canvas');
+        canvasIcon.width = 32;
+        canvasIcon.height = 32;
+        const cCtx = canvasIcon.getContext('2d');
+        cCtx.fillStyle = '#E41212';
+        cCtx.fillRect(6, 2, 20, 8);
+        cCtx.fillStyle = '#FCE0A0';
+        cCtx.fillRect(10, 10, 12, 10);
+        cCtx.fillStyle = '#844400';
+        cCtx.fillRect(6, 10, 4, 6);
+        cCtx.fillStyle = '#103BE4';
+        cCtx.fillRect(8, 20, 16, 12);
+        lifeCanvas.appendChild(canvasIcon);
+    }
+    
+    introTimer = 110;
+}
+
+function showGameOverScreen() {
+    gameState = 'GAMEOVER';
+    screenGameOver.classList.remove('hidden');
+    playSound('die');
+}
+
+function showVictoryScreen() {
+    gameState = 'VICTORY';
+    finalScore.textContent = String(score).padStart(6, '0');
+    screenVictory.classList.remove('hidden');
+}
+
+// Button Events
+document.getElementById('btn-play').addEventListener('click', () => {
+    if (audioEnabled && typeof Tone !== 'undefined') Tone.start();
+    startGame();
+});
+
+document.getElementById('btn-restart').addEventListener('click', () => {
+    if (audioEnabled && typeof Tone !== 'undefined') Tone.start();
+    startGame();
+});
+
+document.getElementById('btn-win-restart').addEventListener('click', () => {
+    if (audioEnabled && typeof Tone !== 'undefined') Tone.start();
+    startGame();
+});
+
+// --- MAIN ENGINE LOOP ---
+function gameLoop() {
+    if (gameState === 'PLAYING') {
+        updatePhysics();
+        drawGame();
+    } else if (gameState === 'INTRO') {
+        introTimer--;
+        if (introTimer <= 0) {
+            screenIntro.classList.add('hidden');
+            gameState = 'PLAYING';
+        }
+    }
+    
+    requestAnimationFrame(gameLoop);
+}
+
+window.onload = function() {
+    gameLoop();
+};
+</script>
+
+<script>
+// --- KEYBOARD CONTROLS SYSTEM ---
+const handleKey = (e, isPressed) => {
+    switch(e.code) {
+        case 'ArrowLeft':
+        case 'KeyA':
+            keys.left = isPressed;
+            break;
+        case 'ArrowRight':
+        case 'KeyD':
+            keys.right = isPressed;
+            break;
+        case 'ArrowUp':
+        case 'KeyW':
+        case 'Space':
+            keys.up = isPressed;
+            if (isPressed && mario.grounded && mario.state !== 'dying') {
+                mario.vy = JUMP_FORCE;
+                mario.grounded = false;
+                playSound('jump');
+            }
+            break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+        case 'KeyX':
+            keys.run = isPressed;
+            break;
+    }
+};
+
+window.addEventListener('keydown', (e) => handleKey(e, true));
+window.addEventListener('keyup', (e) => handleKey(e, false));
+
+// --- TOUCH SCREEN OVERLAY CONTROLS ---
+const setupTouchButton = (id, keyName) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    
+    const triggerStart = (e) => {
+        e.preventDefault();
+        keys[keyName] = true;
+        if (keyName === 'up' && mario.grounded && mario.state !== 'dying') {
+            mario.vy = JUMP_FORCE;
+            mario.grounded = false;
+            playSound('jump');
+        }
+    };
+    
+    const triggerEnd = (e) => {
+        e.preventDefault();
+        keys[keyName] = false;
+    };
+
+    btn.addEventListener('touchstart', triggerStart);
+    btn.addEventListener('touchend', triggerEnd);
+    btn.addEventListener('touchcancel', triggerEnd);
+    
+    btn.addEventListener('mousedown', triggerStart);
+    btn.addEventListener('mouseup', triggerEnd);
+    btn.addEventListener('mouseleave', triggerEnd);
+};
+
+setupTouchButton('ctrl-left', 'left');
+setupTouchButton('ctrl-right', 'right');
+setupTouchButton('ctrl-run', 'run');
+setupTouchButton('ctrl-jump', 'up');
+
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+</script>
+
+</body>
+</html>
