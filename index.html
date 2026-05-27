@@ -2075,7 +2075,7 @@ function drawGame() {
         drawYoshiEntity(ctx, mario.x - 4, yoshiDrawY, 28, 28, mario.facing, globalAnimTick, true);
         ctx.save();
         // Shift Mario drawing up to fit properly onto saddle
-        drawMario(ctx, mario.x, mario.y - 10);
+        drawMario(ctx, mario.x, mario.y - 4);
         ctx.restore();
     } else {
         drawMario(ctx, mario.x, mario.y);
